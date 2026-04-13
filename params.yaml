@@ -1,0 +1,26 @@
+train:
+  model: random_forest
+  test_size: 0.2
+  random_state: 42
+
+random_forest:
+  n_estimators: 200
+  max_depth: 10
+  min_samples_split: 5
+  class_weight: balanced
+
+xgboost:
+  n_estimators: 200
+  max_depth: 6
+  learning_rate: 0.05
+  subsample: 0.8
+  colsample_bytree: 0.8
+  use_label_encoder: false
+  eval_metric: logloss
+
+lightgbm:
+  n_estimators: 200
+  max_depth: 6
+  learning_rate: 0.05
+  num_leaves: 31
+  class_weight: balanced

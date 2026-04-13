@@ -1,0 +1,43 @@
+stages:
+  ingest:
+    cmd: python src/ingestion.py --source data/raw/churn.csv --output data/raw/churn.csv
+    deps:
+      - src/ingestion.py
+    outs:
+      - data/raw/churn.csv
+
+  preprocess:
+    cmd: >
+      python src/preprocessing.py
+      --input data/raw/churn.csv
+      --output data/processed/features.csv
+      --preprocessor models/preprocessor.joblib
+    deps:
+      - src/preprocessing.py
+      - data/raw/churn.csv
+    params:
+      - params.yaml:
+    outs:
+      - data/processed/features.csv
+      - data/processed/target.csv
+      - models/preprocessor.joblib
+
+  train:
+    cmd: >
+      python src/train.py
+      --features data/processed/features.csv
+      --target data/processed/target.csv
+      --model-output models/model.joblib
+      --params params.yaml
+    deps:
+      - src/train.py
+      - data/processed/features.csv
+      - data/processed/target.csv
+      - params.yaml
+    params:
+      - params.yaml:
+    outs:
+      - models/model.joblib
+    metrics:
+      - reports/metrics.json:
+          cache: false
