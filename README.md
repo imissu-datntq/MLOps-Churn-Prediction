@@ -212,21 +212,3 @@ The current champion model achieves (example values; update after training):
 | Recall | 0.XX |
 | ROC-AUC | 0.XX |
 | Inference Latency | < 50 ms |
-
-**Evidently AI** generates data profile reports stored in `reports/` to monitor for feature drift, ensuring the model remains accurate as customer behaviour evolves over time.
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature/my-feature`.
-3. Make your changes and run tests: `pytest tests/ -v`.
-4. Ensure code quality: `black . && flake8 src/ app.py tests/`.
-5. Submit a pull request.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
