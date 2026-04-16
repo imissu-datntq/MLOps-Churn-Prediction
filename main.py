@@ -39,5 +39,7 @@ def main():
         print(f"Test accuracy: {result['test_accuracy']}")
         print(f"Best parameters: {result['best_model'].get_params()}")
 
+    print("MLflow tracking is available in ./mlflow/mlflow.db")
+
 if __name__ == "__main__":
     main()

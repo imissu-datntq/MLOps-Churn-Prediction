@@ -1,5 +1,18 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MLFLOW_DIR = PROJECT_ROOT / "mlflow"
+MLFLOW_DB_PATH = MLFLOW_DIR / "mlflow.db"
+MLFLOW_ARTIFACTS_PATH = MLFLOW_DIR / "artifacts"
+
+
+def _default_mlflow_tracking_uri() -> str:
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+    if tracking_uri:
+        return tracking_uri
+    return f"sqlite:///{MLFLOW_DB_PATH.as_posix()}"
 
 # Data Ingestion Configuration
 @dataclass
@@ -95,4 +108,12 @@ param_grids = {
 @dataclass
 class ModelTrainerConfig:
     trained_model_file_path: str = os.path.join("models")
+
+
+@dataclass
+class MLflowConfig:
+    tracking_uri: str = _default_mlflow_tracking_uri()
+    experiment_name: str = os.getenv("MLFLOW_EXPERIMENT_NAME", "churn-prediction")
+    run_name_prefix: str = os.getenv("MLFLOW_RUN_NAME_PREFIX", "churn-training")
+    artifact_location: str = os.getenv("MLFLOW_ARTIFACT_LOCATION", MLFLOW_ARTIFACTS_PATH.as_uri())
 

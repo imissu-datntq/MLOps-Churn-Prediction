@@ -14,5 +14,5 @@ RUN pip install --trusted-host pypi.python.org -r requirements.txt
 COPY . .
 
 # Set the entry point for the container
-CMD ["python", "ChurnPredictionAPI/run.py"]
+CMD ["python", "main.py"]
 

@@ -8,11 +8,48 @@
 # database or a cache. For examples, see the Awesome Compose repository:
 # https://github.com/docker/awesome-compose
 services:
-  server:
+  trainer:
     build:
       context: .
+    command: ["python", "main.py"]
+    environment:
+      MLFLOW_TRACKING_URI: sqlite:////app/mlflow/mlflow.db
+      MLFLOW_EXPERIMENT_NAME: churn-prediction
+      MLFLOW_RUN_NAME_PREFIX: churn-training
+      MLFLOW_ARTIFACT_LOCATION: file:///app/mlflow/artifacts
+    volumes:
+      - .:/app
+
+  streamlit:
+    build:
+      context: .
+    command:
+      [
+        "streamlit",
+        "run",
+        "streamlit_app.py",
+        "--server.address",
+        "0.0.0.0",
+        "--server.port",
+        "8501"
+      ]
     ports:
-      - 8000:8000
+      - "8501:8501"
+    volumes:
+      - .:/app
+    depends_on:
+      - trainer
+
+  mlflow:
+    build:
+      context: .
+    command: ["mlflow", "ui", "--backend-store-uri", "sqlite:////app/mlflow/mlflow.db", "--default-artifact-root", "/app/mlflow/artifacts", "--host", "0.0.0.0", "--port", "5000"]
+    environment:
+      MLFLOW_TRACKING_URI: sqlite:////app/mlflow/mlflow.db
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to

@@ -3,18 +3,23 @@ import sys
 import pickle
 import numpy as np
 import pandas as pd
+import mlflow
+from mlflow import sklearn
+from mlflow.tracking import MlflowClient
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import GridSearchCV
 from src.exception import CustomException
 from src.logger import logging
 from src.utils import save_object
-from src.config import models, param_grids, ModelTrainerConfig
+from src.config import DataIngestionConfig, models, param_grids, ModelTrainerConfig, MLflowConfig, MLFLOW_DB_PATH, MLFLOW_ARTIFACTS_PATH
 from src.components.preprocessor import Preprocessor
 
 
 class ModelTrainer:
     def __init__(self):
         self.model_trainer_config = ModelTrainerConfig()
+        self.mlflow_config = MLflowConfig()
+        self.data_ingestion_config = DataIngestionConfig()
 
     def _prepare_target(self, y):
         # ...existing code...
@@ -92,10 +97,30 @@ class ModelTrainer:
         test_accuracy = accuracy_score(y_test, y_pred)
         logging.info(f"{model_name} test accuracy: {test_accuracy}")
 
+        mlflow.log_params({f"best_{key}": value for key, value in best_params.items()})
+        mlflow.log_metric("cv_best_score", float(best_score))
+        mlflow.log_metric("test_accuracy", float(test_accuracy))
+        mlflow.log_param("model_name", model_name)
+        sklearn.log_model(best_model, name="model")
+
         return best_model, best_params, best_score, test_accuracy
 
     def initiate_model_training(self, X_train, y_train, X_test, y_test):
         try:
+            os.makedirs(self.model_trainer_config.trained_model_file_path, exist_ok=True)
+            os.makedirs(MLFLOW_DB_PATH.parent, exist_ok=True)
+            os.makedirs(MLFLOW_ARTIFACTS_PATH, exist_ok=True)
+
+            mlflow.set_tracking_uri(self.mlflow_config.tracking_uri)
+            client = MlflowClient()
+            experiment = client.get_experiment_by_name(self.mlflow_config.experiment_name)
+            if experiment is None:
+                mlflow.create_experiment(
+                    name=self.mlflow_config.experiment_name,
+                    artifact_location=self.mlflow_config.artifact_location,
+                )
+            mlflow.set_experiment(self.mlflow_config.experiment_name)
+
             # Remove target leakage if Churn is still in features
             if isinstance(X_train, pd.DataFrame):
                 for col in ["Churn", "churn"]:
@@ -108,28 +133,40 @@ class ModelTrainer:
             X_train = preprocessor.fit_transform(X_train)
             X_test = preprocessor.transform(X_test)
 
-            model_results = {}
-            for model_name, model in models.items():
-                try:
-                    param_grid = param_grids.get(model_name, {})
-                    best_model, best_params, best_score, test_accuracy = self.train_model(
-                        model, model_name, param_grid, X_train, y_train, X_test, y_test
-                    )
-                    model_results[model_name] = {
-                        'best_model': best_model,
-                        'best_params': best_params,
-                        'best_score': best_score,
-                        'test_accuracy': test_accuracy
-                    }
-                except Exception as e:
-                    self.handle_training_exception(e, model_name)
+            with mlflow.start_run(run_name=self.mlflow_config.run_name_prefix):
+                mlflow.log_param("test_size", self.data_ingestion_config.test_size)
+                mlflow.log_param("train_rows", int(len(X_train)))
+                mlflow.log_param("test_rows", int(len(X_test)))
+                mlflow.log_param("feature_count", int(X_train.shape[1]))
 
-            save_object(
-                file_path=os.path.join(self.model_trainer_config.trained_model_file_path, "preprocessor.pkl"),
-                obj=preprocessor
-            )
+                save_object(
+                    file_path=os.path.join(self.model_trainer_config.trained_model_file_path, "preprocessor.pkl"),
+                    obj=preprocessor
+                )
+                mlflow.log_artifact(os.path.join(self.model_trainer_config.trained_model_file_path, "preprocessor.pkl"))
 
-            return model_results
+                model_results = {}
+                for model_name, model in models.items():
+                    try:
+                        param_grid = param_grids.get(model_name, {})
+                        with mlflow.start_run(run_name=model_name, nested=True):
+                            mlflow.log_artifact(
+                                os.path.join(self.model_trainer_config.trained_model_file_path, "preprocessor.pkl"),
+                                artifact_path="preprocessing"
+                            )
+                            best_model, best_params, best_score, test_accuracy = self.train_model(
+                                model, model_name, param_grid, X_train, y_train, X_test, y_test
+                            )
+                            model_results[model_name] = {
+                                'best_model': best_model,
+                                'best_params': best_params,
+                                'best_score': best_score,
+                                'test_accuracy': test_accuracy
+                            }
+                    except Exception as e:
+                        self.handle_training_exception(e, model_name)
+
+                return model_results
         except Exception as e:
             self.handle_training_exception(e, "initiate_model_training")
     

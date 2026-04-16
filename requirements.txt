@@ -1,1 +1,6 @@
-# Placeholder
+mlflow
+numpy
+pandas
+scikit-learn
+streamlit
+xgboost

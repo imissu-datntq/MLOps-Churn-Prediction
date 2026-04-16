@@ -2,9 +2,9 @@
 
 ## 📌 Overview
 
-This repository contains a production-ready MLOps pipeline designed to predict customer churn. Unlike traditional machine learning projects that focus solely on model accuracy, **ChurnGuard** emphasizes the entire ML lifecycle—including data versioning, automated experiment tracking, continuous integration, and containerized deployment.
+This repository contains a churn model training pipeline with **MLflow** experiment tracking and Docker support. The focus is on training multiple classifiers, logging metrics and artifacts, and keeping the results easy to compare across runs.
 
-The goal is to provide a robust framework that allows data scientists to move from raw data to a monitored, scalable API with minimal manual intervention.
+The goal is to provide a simple, reproducible workflow that takes the prepared churn dataset, trains models, and records the results in MLflow.
 
 ---
 
@@ -13,81 +13,60 @@ The goal is to provide a robust framework that allows data scientists to move fr
 | Layer | Tool |
 |---|---|
 | **Language** | Python 3.9+ |
-| **Orchestration** | [DVC](https://dvc.org/) (Data Version Control) |
 | **Experiment Tracking** | [MLflow](https://mlflow.org/) |
 | **Containerization** | Docker & Docker Compose |
-| **CI/CD** | GitHub Actions |
-| **Model Serving** | [FastAPI](https://fastapi.tiangolo.com/) |
-| **Testing** | Pytest (Unit & Integration tests) |
-| **Data Validation** | [Evidently AI](https://www.evidentlyai.com/) |
+| **Modeling** | scikit-learn, XGBoost |
 
 ---
 
 ## 🏗 Project Architecture
 
-The project follows a modular pipeline structure to ensure maintainability and scalability.
+The project follows a compact training pipeline structure.
 
 ```
-Raw Data ──► Ingestion ──► Preprocessing ──► Training ──► Evaluation ──► Registry ──► API
-               (DVC)         (scikit-learn)    (MLflow)    (Evidently)    (MLflow)   (FastAPI)
+Raw Data ──► Ingestion ──► Preprocessing ──► Training ──► MLflow Tracking
+               (pandas)         (scikit-learn)    (MLflow)
 ```
 
-1. **Data Ingestion** — Automated scripts fetch and version raw datasets using DVC.
-2. **Preprocessing & Feature Engineering** — Modular scripts handle missing values, encoding, and scaling; the same logic is applied at inference time.
-3. **Model Training** — Training scripts integrate with MLflow to log hyperparameters, metrics, and model artifacts.
-4. **Evaluation & Validation** — Automated checks for model drift and performance before promotion to production.
-5. **Model Registry** — Centralized versioned model storage via MLflow.
-6. **Deployment** — REST API built with FastAPI, containerized with Docker for environment consistency.
+1. **Data Ingestion** — Reads the raw churn CSV from `data/raw/data.csv` and creates train/test splits.
+2. **Preprocessing & Feature Engineering** — Handles encoding, scaling, and target preparation for the churn dataset.
+3. **Model Training** — Trains multiple classifiers and logs hyperparameters, metrics, and artifacts to MLflow.
+4. **Experiment Tracking** — Compare runs in the MLflow UI without changing the training code.
 
 ---
 
 ## 🚀 Key Features
 
 ### 1. Data & Model Versioning
-**DVC** manages large datasets and model files that are too heavy for Git. Every experiment is 100% reproducible by linking specific code versions to specific data states.
+Model artifacts are saved under `models/`, and MLflow keeps a run history in `mlflow/mlflow.db`.
 
 ### 2. Automated Experiment Tracking
-Every training run is logged via **MLflow**. Compare different algorithms (Random Forest, XGBoost, LightGBM) and hyperparameter configurations through the MLflow UI at `http://localhost:5000`.
+Every training run is logged via **MLflow**. Compare different algorithms and hyperparameter configurations through the MLflow UI at `http://localhost:5000`.
 
-### 3. Continuous Integration (CI)
-GitHub Actions runs automatically on every push and pull request:
-- Lint code with `flake8` and `black`.
-- Run unit tests on data processing functions.
-- Upload coverage reports as artifacts.
-
-### 4. Containerized Deployment
-The prediction service is wrapped in a **Docker** container, enabling seamless execution across Development, Staging, and Production environments.
-
-### 5. Data Drift Monitoring
-**Evidently AI** generates data profile reports to detect feature drift, ensuring the model stays accurate as customer behaviour evolves.
+### 3. Containerized Execution
+The training job and MLflow UI can be run together with Docker Compose.
 
 ---
 
 ## 📁 Repository Structure
 
 ```text
-├── .github/workflows/
-│   └── ci.yml                # CI/CD pipeline (lint + test)
 ├── data/
-│   ├── raw/                  # DVC-tracked raw CSV files
-│   └── processed/            # DVC-tracked processed features
+│   ├── raw/                  # Raw churn CSV files
+│   └── processed/            # Train/test splits
+├── mlflow/                   # Local MLflow tracking store and artifacts
 ├── models/                   # Saved model & preprocessor artifacts
-├── reports/                  # Metrics and drift reports
 ├── src/
 │   ├── __init__.py
-│   ├── ingestion.py          # Data loading logic
-│   ├── preprocessing.py      # Feature engineering & preprocessing
-│   ├── train.py              # Model training & MLflow logging
-│   └── predict.py            # Inference logic
-├── tests/
-│   ├── test_ingestion.py
-│   ├── test_preprocessing.py
-│   └── test_train.py
-├── app.py                    # FastAPI application
+│   ├── config.py             # Paths, model definitions, MLflow config
+│   └── components/
+│       ├── data_ingestion.py
+│       ├── data_transformation.py
+│       ├── model_trainer.py
+│       └── preprocessor.py
+├── main.py                   # Entry point for training and logging
 ├── Dockerfile                # Container configuration
-├── docker-compose.yml        # Multi-service orchestration (API + MLflow)
-├── dvc.yaml                  # DVC pipeline definition
-├── params.yaml               # Hyperparameters managed by DVC
+├── compose.yaml              # MLflow UI + training orchestration
 └── requirements.txt          # Project dependencies
 ```
 
@@ -98,8 +77,7 @@ The prediction service is wrapped in a **Docker** container, enabling seamless e
 ### Prerequisites
 
 - Python 3.9+
-- Docker & Docker Compose
-- DVC (`pip install dvc`)
+- Docker & Docker Compose (optional, for the MLflow UI container)
 
 ### Installation
 
@@ -116,75 +94,62 @@ The prediction service is wrapped in a **Docker** container, enabling seamless e
    pip install -r requirements.txt
    ```
 
-3. **Pull versioned data** (requires DVC remote access)
+### Running the Training Job
 
-   ```bash
-   dvc pull
-   ```
-
-### Running the Pipeline
-
-Execute the full MLOps pipeline end-to-end:
+Run the training pipeline locally:
 
 ```bash
-dvc repro
+python main.py
 ```
 
-DVC automatically detects which stages are stale and only reruns what has changed.
-
-### Starting the API
-
-Run the full stack (prediction API + MLflow tracking server):
+Or run the training job and MLflow UI together:
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
+
+To run training, MLflow, and the Streamlit prediction UI together:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+- MLflow UI: `http://localhost:5000`
+- Streamlit app: `http://localhost:8501`
+
+### Inspecting MLflow
 
 | Service | URL |
 |---|---|
-| Prediction API | `http://localhost:8000/docs` |
 | MLflow UI | `http://localhost:5000` |
 
-**Interactive API docs** are available at `http://localhost:8000/docs` (Swagger UI).
+The training job writes MLflow metadata to `./mlflow/mlflow.db` and artifacts to `./mlflow/artifacts`.
+
+### Streamlit Prediction With MLflow-Tracked Models
+
+The Streamlit app now supports two inference sources:
+
+- `Local models folder`: loads `models/<model_name>.pkl` and `models/preprocessor.pkl`
+- `MLflow runs`: loads both model and preprocessor from the selected run (`runs:/<run_id>/model` and `runs:/<run_id>/preprocessing/preprocessor.pkl`)
+
+For older runs that were logged before this change, the app automatically falls back to `models/preprocessor.pkl` if the run does not contain `preprocessing/preprocessor.pkl`.
+
+Run the UI:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+In the app, choose **Model Source** and then pick either a local model or an MLflow run.
 
 ### Running Tests
 
-```bash
-pytest tests/ -v --cov=src
-```
-
----
-
-## 🔍 API Usage
-
-### Single Prediction
+If you add tests later, run them with:
 
 ```bash
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tenure": 24,
-    "MonthlyCharges": 65.5,
-    "TotalCharges": 1572.0,
-    "Contract": "Month-to-month",
-    "InternetService": "Fiber optic",
-    "PaymentMethod": "Electronic check"
-  }'
-```
-
-**Response:**
-
-```json
-{
-  "churn": true,
-  "churn_probability": 0.7831
-}
-```
-
-### Health Check
-
-```bash
-curl http://localhost:8000/health
+pytest -v --cov=src
 ```
 
 ---
@@ -193,11 +158,15 @@ curl http://localhost:8000/health
 
 Training runs are tracked automatically. To compare experiments:
 
-1. Start the MLflow UI: `mlflow ui` (or via Docker Compose)
+1. Start the MLflow UI: `mlflow ui --backend-store-uri sqlite:///./mlflow/mlflow.db --default-artifact-root ./mlflow/artifacts`
 2. Open `http://localhost:5000`
 3. Navigate to the **churn-prediction** experiment to compare runs
 
-To change the model or hyperparameters, edit `params.yaml` and re-run `dvc repro`.
+If you hit a migration error (for example missing Alembic revision), run:
+
+`mlflow db upgrade sqlite:///./mlflow/mlflow.db`
+
+To change the model or hyperparameters, edit the values in `src/config.py` and rerun `python main.py`.
 
 ---
 
