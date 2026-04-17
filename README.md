@@ -14,8 +14,9 @@ The goal is to provide a simple, reproducible workflow that takes the prepared c
 |---|---|
 | **Language** | Python 3.9+ |
 | **Experiment Tracking** | [MLflow](https://mlflow.org/) |
-| **Containerization** | Docker & Docker Compose |
+| **Containerization** | Docker, Docker Compose & Kubernetes |
 | **Modeling** | scikit-learn, XGBoost |
+| **CI/CD & Testing** | GitHub Actions, Pytest |
 
 ---
 
@@ -43,17 +44,19 @@ Model artifacts are saved under `models/`, and MLflow keeps a run history in `ml
 ### 2. Automated Experiment Tracking
 Every training run is logged via **MLflow**. Compare different algorithms and hyperparameter configurations through the MLflow UI at `http://localhost:5000`.
 
-### 3. Containerized Execution
-The training job and MLflow UI can be run together with Docker Compose.
+### 3. Containerized Execution & MLOps Orchestration
+The training job and MLflow UI can be run locally with Docker Compose, or scaled dynamically using **Kubernetes** for Enterprise-grade High Availability and Rolling Updates. We enforce Continuous Integration via **GitHub Actions** and Pytest.
 
 ---
 
 ## 📁 Repository Structure
 
 ```text
+├── .github/workflows/        # Automated CI/CD pipelines (GitHub Actions)
 ├── data/
 │   ├── raw/                  # Raw churn CSV files
 │   └── processed/            # Train/test splits
+├── kubernetes/               # Enterprise K8s Manifests (Deployments, Services, PVC)
 ├── mlflow/                   # Local MLflow tracking store and artifacts
 ├── models/                   # Saved model & preprocessor artifacts
 ├── src/
@@ -64,6 +67,7 @@ The training job and MLflow UI can be run together with Docker Compose.
 │       ├── data_transformation.py
 │       ├── model_trainer.py
 │       └── preprocessor.py
+├── tests/                    # Unit tests for CI pipeline (Pytest)
 ├── main.py                   # Entry point for training and logging
 ├── Dockerfile                # Container configuration
 ├── compose.yaml              # MLflow UI + training orchestration
@@ -77,7 +81,8 @@ The training job and MLflow UI can be run together with Docker Compose.
 ### Prerequisites
 
 - Python 3.9+
-- Docker & Docker Compose (optional, for the MLflow UI container)
+- Docker & Docker Compose
+- **Kubernetes** (e.g., Docker Desktop Kubernetes or Minikube - optional for enterprise deployment)
 
 ### Installation
 
@@ -144,13 +149,37 @@ streamlit run streamlit_app.py
 
 In the app, choose **Model Source** and then pick either a local model or an MLflow run.
 
-### Running Tests
+### Running Tests & CI/CD Pipeline
 
-If you add tests later, run them with:
+The project guarantees integration testing via **GitHub Actions** workflows. Ensure testing dependencies are installed and test your components locally before deploying:
 
 ```bash
-pytest -v --cov=src
+pytest tests/
 ```
+
+### Enterprise Kubernetes Deployment (K8s)
+
+For a highly available production setup with Load Balancing, deploy the system using Kubernetes:
+
+1. **Build Local Docker Image:**
+   ```bash
+   docker build -t mlops-churn-prediction:latest .
+   ```
+
+2. **Apply Kubernetes Manifests:**
+   ```bash
+   kubectl apply -f kubernetes/
+   ```
+
+3. **Access the Microservices:**
+   - **Streamlit Inference Web UI:** `http://localhost:8501` (LoadBalanced, Auto-Scaled)
+   - **Internal MLflow Tracking:** Port-forward the internal database by running:
+     ```bash
+     kubectl port-forward svc/mlflow-service 5000:5000
+     ```
+     then interact via `http://localhost:5000`
+
+*(To cleanly teardown the K8s cluster: `kubectl delete -f kubernetes/`)*
 
 ---
 
