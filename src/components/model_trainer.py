@@ -6,7 +6,7 @@ import pandas as pd
 import mlflow
 from mlflow import sklearn
 from mlflow.tracking import MlflowClient
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import GridSearchCV
 from src.exception import CustomException
 from src.logger import logging
@@ -94,16 +94,39 @@ class ModelTrainer:
         )
 
         y_pred = best_model.predict(X_test)
+        
+        # Calculate evaluation metrics
         test_accuracy = accuracy_score(y_test, y_pred)
+        test_f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
+        test_precision = precision_score(y_test, y_pred, average='weighted', zero_division=0)
+        test_recall = recall_score(y_test, y_pred, average='weighted', zero_division=0)
+        
+        # Calculate ROC AUC if probability predictions are supported
+        test_roc_auc = None
+        try:
+            if hasattr(best_model, "predict_proba"):
+                y_pred_proba = best_model.predict_proba(X_test)
+                if y_pred_proba.shape[1] == 2:
+                    y_pred_proba = y_pred_proba[:, 1]
+                test_roc_auc = roc_auc_score(y_test, y_pred_proba)
+        except Exception as e:
+            logging.warning(f"Could not calculate ROC AUC for {model_name}: {e}")
+
         logging.info(f"{model_name} test accuracy: {test_accuracy}")
+        logging.info(f"{model_name} metrics - F1: {test_f1:.4f}, Precision: {test_precision:.4f}, Recall: {test_recall:.4f}")
 
         mlflow.log_params({f"best_{key}": value for key, value in best_params.items()})
         mlflow.log_metric("cv_best_score", float(best_score))
         mlflow.log_metric("test_accuracy", float(test_accuracy))
+        mlflow.log_metric("test_f1_score", float(test_f1))
+        mlflow.log_metric("test_precision", float(test_precision))
+        mlflow.log_metric("test_recall", float(test_recall))
+        if test_roc_auc is not None:
+            mlflow.log_metric("test_roc_auc", float(test_roc_auc))
         mlflow.log_param("model_name", model_name)
         sklearn.log_model(best_model, name="model")
 
-        return best_model, best_params, best_score, test_accuracy
+        return best_model, best_params, best_score, test_accuracy, test_f1, test_precision, test_recall, test_roc_auc
 
     def initiate_model_training(self, X_train, y_train, X_test, y_test):
         try:
@@ -154,14 +177,18 @@ class ModelTrainer:
                                 os.path.join(self.model_trainer_config.trained_model_file_path, "preprocessor.pkl"),
                                 artifact_path="preprocessing"
                             )
-                            best_model, best_params, best_score, test_accuracy = self.train_model(
+                            best_model, best_params, best_score, test_accuracy, test_f1, test_precision, test_recall, test_roc_auc = self.train_model(
                                 model, model_name, param_grid, X_train, y_train, X_test, y_test
                             )
                             model_results[model_name] = {
                                 'best_model': best_model,
                                 'best_params': best_params,
                                 'best_score': best_score,
-                                'test_accuracy': test_accuracy
+                                'test_accuracy': test_accuracy,
+                                'test_f1': test_f1,
+                                'test_precision': test_precision,
+                                'test_recall': test_recall,
+                                'test_roc_auc': test_roc_auc
                             }
                     except Exception as e:
                         self.handle_training_exception(e, model_name)

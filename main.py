@@ -35,9 +35,15 @@ def main():
     # Print model results
     for model_name, result in model_results.items():
         print(f"Results for {model_name}:")
-        print(f"Best score: {result['best_score']}")
-        print(f"Test accuracy: {result['test_accuracy']}")
+        print(f"CV Best score: {result['best_score']:.4f}")
+        print(f"Test accuracy: {result['test_accuracy']:.4f}")
+        print(f"Test F1: {result['test_f1']:.4f}")
+        print(f"Test Precision: {result['test_precision']:.4f}")
+        print(f"Test Recall: {result['test_recall']:.4f}")
+        if result.get('test_roc_auc') is not None:
+            print(f"Test ROC AUC: {result['test_roc_auc']:.4f}")
         print(f"Best parameters: {result['best_model'].get_params()}")
+        print("-" * 30)
 
     print("MLflow tracking is available in ./mlflow/mlflow.db")
 
