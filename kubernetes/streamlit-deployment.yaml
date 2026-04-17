@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streamlit-deployment
+  labels:
+    app: streamlit
+spec:
+  replicas: 2  # Scaled for High Availability
+  strategy:
+    type: RollingUpdate  # This maps perfectly to Section 4.2 in your report
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: streamlit
+  template:
+    metadata:
+      labels:
+        app: streamlit
+    spec:
+      containers:
+      - name: streamlit
+        image: mlops-churn-prediction:latest
+        imagePullPolicy: IfNotPresent
+        command: 
+          - "streamlit"
+          - "run"
+          - "streamlit_app.py"
+          - "--server.address"
+          - "0.0.0.0"
+          - "--server.port"
+          - "8501"
+        ports:
+        - containerPort: 8501
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: streamlit-service
+spec:
+  selector:
+    app: streamlit
+  ports:
+    - protocol: TCP
+      port: 8501
+      targetPort: 8501
+  type: LoadBalancer  # Map to external IP for end-users, matching the report perfectly
