@@ -1,6 +1,7 @@
 import os
 import sys
 import pickle
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import mlflow
@@ -128,13 +129,11 @@ class ModelTrainer:
 
         return best_model, best_params, best_score, test_accuracy, test_f1, test_precision, test_recall, test_roc_auc
 
-    def initiate_model_training(self, X_train, y_train, X_test, y_test):
-        try:
-            os.makedirs(self.model_trainer_config.trained_model_file_path, exist_ok=True)
-            os.makedirs(MLFLOW_DB_PATH.parent, exist_ok=True)
-            os.makedirs(MLFLOW_ARTIFACTS_PATH, exist_ok=True)
+    def _initialize_mlflow_tracking(self):
+        """Initialize MLflow and recover from incompatible Alembic revision DB errors."""
+        mlflow.set_tracking_uri(self.mlflow_config.tracking_uri)
 
-            mlflow.set_tracking_uri(self.mlflow_config.tracking_uri)
+        def _ensure_experiment_exists():
             client = MlflowClient()
             experiment = client.get_experiment_by_name(self.mlflow_config.experiment_name)
             if experiment is None:
@@ -143,6 +142,43 @@ class ModelTrainer:
                     artifact_location=self.mlflow_config.artifact_location,
                 )
             mlflow.set_experiment(self.mlflow_config.experiment_name)
+
+        try:
+            _ensure_experiment_exists()
+        except Exception as exc:
+            message = str(exc)
+            if "Can't locate revision identified by" not in message:
+                raise
+
+            if MLFLOW_DB_PATH.exists():
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_path = MLFLOW_DB_PATH.with_name(f"mlflow_incompatible_{timestamp}.db")
+                try:
+                    os.replace(MLFLOW_DB_PATH, backup_path)
+                    logging.warning(
+                        "Detected incompatible MLflow DB revision. Backed up old DB to %s and creating a new tracking DB.",
+                        backup_path,
+                    )
+                except PermissionError:
+                    fallback_path = MLFLOW_DB_PATH.with_name(f"mlflow_fallback_{timestamp}.db")
+                    self.mlflow_config.tracking_uri = f"sqlite:///{fallback_path.as_posix()}"
+                    logging.warning(
+                        "Detected incompatible MLflow DB revision but %s is locked by another process. "
+                        "Switching this training run to fallback tracking DB: %s",
+                        MLFLOW_DB_PATH,
+                        fallback_path,
+                    )
+
+            mlflow.set_tracking_uri(self.mlflow_config.tracking_uri)
+            _ensure_experiment_exists()
+
+    def initiate_model_training(self, X_train, y_train, X_test, y_test):
+        try:
+            os.makedirs(self.model_trainer_config.trained_model_file_path, exist_ok=True)
+            os.makedirs(MLFLOW_DB_PATH.parent, exist_ok=True)
+            os.makedirs(MLFLOW_ARTIFACTS_PATH, exist_ok=True)
+
+            self._initialize_mlflow_tracking()
 
             # Remove target leakage if Churn is still in features
             if isinstance(X_train, pd.DataFrame):
