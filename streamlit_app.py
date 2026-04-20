@@ -68,6 +68,19 @@ def configure_mlflow():
     mlflow.set_tracking_uri(MLflowConfig().tracking_uri)
 
 
+def find_mlmodel_artifact_path(client: MlflowClient, run_id: str, path: str = "") -> str | None:
+    """Recursively find an MLmodel file path inside a run's artifacts."""
+    artifacts = client.list_artifacts(run_id=run_id, path=path)
+    for artifact in artifacts:
+        if artifact.is_dir:
+            found = find_mlmodel_artifact_path(client, run_id, artifact.path)
+            if found is not None:
+                return found
+        elif artifact.path.endswith("MLmodel"):
+            return artifact.path.rsplit("/", 1)[0]
+    return None
+
+
 @st.cache_data(ttl=30)
 def available_mlflow_runs() -> list[MlflowRunOption]:
     configure_mlflow()
@@ -103,9 +116,35 @@ def available_mlflow_runs() -> list[MlflowRunOption]:
 
 
 @st.cache_resource
-def load_model_from_mlflow(run_id: str):
+def load_model_from_mlflow(run_id: str, model_name: str):
     configure_mlflow()
-    return mlflow_sklearn.load_model(f"runs:/{run_id}/model")
+    load_errors: list[str] = []
+
+    # Primary path for runs logged with artifact_path/name="model".
+    try:
+        return mlflow_sklearn.load_model(f"runs:/{run_id}/model")
+    except Exception as exc:
+        load_errors.append(str(exc))
+
+    # Fallback: discover any MLmodel artifact path in the run.
+    try:
+        client = MlflowClient()
+        discovered_path = find_mlmodel_artifact_path(client, run_id)
+        if discovered_path is not None:
+            return mlflow_sklearn.load_model(f"runs:/{run_id}/{discovered_path}")
+    except Exception as exc:
+        load_errors.append(str(exc))
+
+    # Final fallback: local model artifact by model name.
+    local_model_path = MODELS_DIR / f"{model_name}.pkl"
+    if local_model_path.exists():
+        with open(local_model_path, "rb") as model_file:
+            return pickle.load(model_file)
+
+    raise FileNotFoundError(
+        "Could not load model from MLflow run artifacts and local fallback model is missing. "
+        f"run_id={run_id}, model_name={model_name}, errors={load_errors}"
+    )
 
 
 @st.cache_resource
@@ -252,7 +291,7 @@ def main():
         selected_label = st.selectbox("MLflow Run", run_labels, index=selected_idx)
         selected_option = run_options[run_labels.index(selected_label)]
 
-        model = load_model_from_mlflow(selected_option.run_id)
+        model = load_model_from_mlflow(selected_option.run_id, selected_option.model_name)
         try:
             preprocessor = load_preprocessor_from_mlflow(selected_option.run_id)
             st.info(
@@ -270,6 +309,13 @@ def main():
             st.warning(
                 "Selected MLflow run does not contain preprocessor artifact; using "
                 "local models/preprocessor.pkl fallback."
+            )
+
+        local_model_path = MODELS_DIR / f"{selected_option.model_name}.pkl"
+        if local_model_path.exists():
+            st.caption(
+                "Model loading uses MLflow artifact when available, otherwise falls back to local "
+                f"{local_model_path}."
             )
 
     if model is None or preprocessor is None:
